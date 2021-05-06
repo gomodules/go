@@ -227,6 +227,14 @@ func GetKind(p reflect.Type) (string, error) {
 	return p.PkgPath() + "." + p.Name(), nil
 }
 
+func MustGetKind(p reflect.Type) string {
+	if p.Kind() != reflect.Struct {
+		panic("only kind Struct is supported")
+	}
+
+	return p.PkgPath() + "." + p.Name()
+}
+
 func getTypeDecoderFromExtension(ctx *ctx, typ reflect2.Type) ValDecoder {
 	decoder := _getTypeDecoderFromExtension(ctx, typ)
 	if decoder != nil {
