@@ -2,17 +2,16 @@ package jsoniter
 
 import (
 	"fmt"
-	"github.com/modern-go/reflect2"
 	"reflect"
 	"sort"
 	"strings"
 	"unicode"
 	"unsafe"
+
+	"github.com/modern-go/reflect2"
 )
 
-var typeDecoders = map[string]ValDecoder{}
 var fieldDecoders = map[string]ValDecoder{}
-var typeEncoders = map[string]ValEncoder{}
 var fieldEncoders = map[string]ValEncoder{}
 var extensions = []Extension{}
 
@@ -195,16 +194,6 @@ type DecoderFunc func(ptr unsafe.Pointer, iter *Iterator)
 // EncoderFunc the function form of TypeEncoder
 type EncoderFunc func(ptr unsafe.Pointer, stream *Stream)
 
-// RegisterTypeDecoderFunc register TypeDecoder for a type with function
-func RegisterTypeDecoderFunc(typ string, fun DecoderFunc) {
-	typeDecoders[typ] = &funcDecoder{fun}
-}
-
-// RegisterTypeDecoder register TypeDecoder for a typ
-func RegisterTypeDecoder(typ string, decoder ValDecoder) {
-	typeDecoders[typ] = decoder
-}
-
 // RegisterFieldDecoderFunc register TypeDecoder for a struct field with function
 func RegisterFieldDecoderFunc(typ string, field string, fun DecoderFunc) {
 	RegisterFieldDecoder(typ, field, &funcDecoder{fun})
@@ -213,16 +202,6 @@ func RegisterFieldDecoderFunc(typ string, field string, fun DecoderFunc) {
 // RegisterFieldDecoder register TypeDecoder for a struct field
 func RegisterFieldDecoder(typ string, field string, decoder ValDecoder) {
 	fieldDecoders[fmt.Sprintf("%s/%s", typ, field)] = decoder
-}
-
-// RegisterTypeEncoderFunc register TypeEncoder for a type with encode/isEmpty function
-func RegisterTypeEncoderFunc(typ string, fun EncoderFunc, isEmptyFunc func(unsafe.Pointer) bool) {
-	typeEncoders[typ] = &funcEncoder{fun, isEmptyFunc}
-}
-
-// RegisterTypeEncoder register TypeEncoder for a type
-func RegisterTypeEncoder(typ string, encoder ValEncoder) {
-	typeEncoders[typ] = encoder
 }
 
 // RegisterFieldEncoderFunc register TypeEncoder for a struct field with encode/isEmpty function
@@ -238,6 +217,22 @@ func RegisterFieldEncoder(typ string, field string, encoder ValEncoder) {
 // RegisterExtension register extension
 func RegisterExtension(extension Extension) {
 	extensions = append(extensions, extension)
+}
+
+func GetKind(p reflect.Type) (string, error) {
+	if p.Kind() != reflect.Struct {
+		return "", fmt.Errorf("only kind Struct is supported")
+	}
+
+	return p.PkgPath() + "." + p.Name(), nil
+}
+
+func MustGetKind(p reflect.Type) string {
+	if p.Kind() != reflect.Struct {
+		panic("only kind Struct is supported")
+	}
+
+	return p.PkgPath() + "." + p.Name()
 }
 
 func getTypeDecoderFromExtension(ctx *ctx, typ reflect2.Type) ValDecoder {
@@ -270,14 +265,16 @@ func _getTypeDecoderFromExtension(ctx *ctx, typ reflect2.Type) ValDecoder {
 			return decoder
 		}
 	}
-	typeName := typ.String()
-	decoder = typeDecoders[typeName]
+
+	typ1, _ := GetKind(typ.Type1())
+	decoder = ctx.typeDecoders[typ1]
 	if decoder != nil {
 		return decoder
 	}
 	if typ.Kind() == reflect.Ptr {
 		ptrType := typ.(*reflect2.UnsafePtrType)
-		decoder := typeDecoders[ptrType.Elem().String()]
+		typ1, _ := GetKind(ptrType.Elem().Type1())
+		decoder := ctx.typeDecoders[typ1]
 		if decoder != nil {
 			return &OptionalDecoder{ptrType.Elem(), decoder}
 		}
@@ -316,14 +313,15 @@ func _getTypeEncoderFromExtension(ctx *ctx, typ reflect2.Type) ValEncoder {
 			return encoder
 		}
 	}
-	typeName := typ.String()
-	encoder = typeEncoders[typeName]
+	typ1, _ := GetKind(typ.Type1())
+	encoder = ctx.typeEncoders[typ1]
 	if encoder != nil {
 		return encoder
 	}
 	if typ.Kind() == reflect.Ptr {
 		typePtr := typ.(*reflect2.UnsafePtrType)
-		encoder := typeEncoders[typePtr.Elem().String()]
+		typ1, _ := GetKind(typePtr.Elem().Type1())
+		encoder := ctx.typeEncoders[typ1]
 		if encoder != nil {
 			return &OptionalEncoder{encoder}
 		}
